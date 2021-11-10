@@ -19,6 +19,9 @@ class MLP(torch.nn.Module):
         for idx, (in_size, out_size) in enumerate(zip(config['layers'][:-1], config['layers'][1:])):
             self.fc_layers.append(torch.nn.Linear(in_size, out_size))
 
+
+
+
         self.affine_output = torch.nn.Linear(in_features=config['layers'][-1], out_features=1)
         self.logistic = torch.nn.Sigmoid()
 
@@ -56,8 +59,12 @@ class MLPEngine(Engine):
         if config['use_cuda'] is True:
             use_cuda(True, config['device_id'])
             self.model.cuda()
+            print(next(self.model.parameters()).device)
         super(MLPEngine, self).__init__(config)
         print(self.model)
 
         if config['pretrain']:
             self.model.load_pretrain_weights()
+
+    def get_item_vector(self):
+        return  self.model.embedding_item

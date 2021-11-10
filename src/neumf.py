@@ -25,6 +25,7 @@ class NeuMF(torch.nn.Module):
 
         self.affine_output = torch.nn.Linear(in_features=config['layers'][-1] + config['latent_dim_mf'], out_features=1)
         self.logistic = torch.nn.Sigmoid()
+        self.item_vec = torch.nn.Embedding(num_embeddings=self.num_items, embedding_dim=self.latent_dim_mf + self.latent_dim_mlp)
 
     def forward(self, user_indices, item_indices):
         user_embedding_mlp = self.embedding_user_mlp(user_indices)
@@ -40,6 +41,7 @@ class NeuMF(torch.nn.Module):
             mlp_vector = torch.nn.ReLU()(mlp_vector)
 
         vector = torch.cat([mlp_vector, mf_vector], dim=-1)
+
         logits = self.affine_output(vector)
         rating = self.logistic(logits)
         return rating
@@ -80,8 +82,13 @@ class NeuMFEngine(Engine):
         if config['use_cuda'] is True:
             use_cuda(True, config['device_id'])
             self.model.cuda()
+            print(next(self.model.parameters()).device)
         super(NeuMFEngine, self).__init__(config)
         print(self.model)
 
         if config['pretrain']:
             self.model.load_pretrain_weights()
+
+    def get_item_vector(self):
+        self.model.item_vec.weight.data = torch.cat([self.model.embedding_item_mlp.weight.data, self.model.embedding_item_mf.weight.data], dim=-1)
+        return  self.model.item_vec

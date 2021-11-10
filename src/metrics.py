@@ -1,7 +1,9 @@
 import math
 import pandas as pd
-
-
+from sklearn.preprocessing import Normalizer
+from sklearn.metrics.pairwise import cosine_similarity
+import torch
+import numpy as np
 class MetronAtK(object):
     def __init__(self, top_k):
         self._top_k = top_k
@@ -55,3 +57,75 @@ class MetronAtK(object):
         test_in_top_k =top_k[top_k['test_item'] == top_k['item']]
         test_in_top_k['ndcg'] = test_in_top_k['rank'].apply(lambda x: math.log(2) / math.log(1 + x)) # the rank starts from 1
         return test_in_top_k['ndcg'].sum() * 1.0 / full['user'].nunique()
+
+
+    # def cal_ils(self,embedding_item):
+    #     dim_np= np.load('./item_dim.npy')
+    #     num_k=self._top_k
+    #     full, top_k = self._subjects, self._top_k
+    #     top_k = full[full['rank']<=top_k]
+    #     user_itemsS = top_k.groupby('user')
+    #     ils_sum = 0
+    #     for user_items in user_itemsS:
+    #         items_seq = user_items[1]['item']
+    #         items_seq = torch.from_numpy(np.array(items_seq.tolist())).cuda(0)
+    #         items_vec = embedding_item(items_seq).cpu().detach().numpy()
+    #         normalizer = Normalizer(norm='l2')
+    #         items_vec = normalizer.fit_transform(items_vec)
+    #         similarity_matrix = cosine_similarity(items_vec)
+    #         similarity_matrix_df = pd.DataFrame(similarity_matrix)
+    #         similarity_matrix_df = (similarity_matrix_df + 1) * 0.5    #对余弦相似度归一化处理
+    #         L = np.tril(similarity_matrix_df, -1)
+    #         one_ils= 2*L.sum()/(num_k*(num_k-1))
+    #         ils_sum=ils_sum+one_ils
+    #     return ils_sum/full['user'].nunique()
+
+    def cal_ils(self):
+        dim_np= np.load('./item_dim.npy')
+        num_k=self._top_k
+        full, top_k = self._subjects, self._top_k
+        top_k = full[full['rank']<=top_k]
+        user_itemsS = top_k.groupby('user')
+        ils_sum = 0
+        for user_items in user_itemsS:
+            items_seq = user_items[1]['item']
+            items_vec = dim_np[items_seq, :]
+            similarity_matrix = cosine_similarity(items_vec)
+            similarity_matrix_df = pd.DataFrame(similarity_matrix)
+            similarity_matrix_df = (similarity_matrix_df + 1) * 0.5    #对余弦相似度归一化处理
+            L = np.tril(similarity_matrix_df, -1)
+            one_ils= 2*L.sum()/(num_k*(num_k-1))
+            ils_sum=ils_sum+one_ils
+        return ils_sum/full['user'].nunique()
+
+    def cal_kendall(self):
+        kendall_np = np.load('./user_dim.npy')
+        dim_np = np.load('./item_dim.npy')
+
+        num_k = self._top_k
+        full, top_k = self._subjects, self._top_k
+        top_k = full[full['rank'] <= top_k]
+        user_itemsS = top_k.groupby('user')
+        kendall_sum = 0
+        up_num = 0 #符合要求的用户数
+        temp_up_num = 0
+        for user_items in user_itemsS:
+            items_seq = user_items[1]['item']
+            user_id = int(user_items[0])
+            items_vec = dim_np[items_seq, :]   #获得推荐项目的向量
+            items_vec_sum = np.zeros(shape=(1,18))
+            for vec in items_vec:
+                items_vec_sum += vec
+            temp = kendall_np[user_id, :]
+            for t in temp:
+                temp_up_num  =temp_up_num + int(t)
+            if temp_up_num > 200:
+                up_num = up_num +1
+                data = np.vstack((items_vec_sum, temp))
+                data = pd.DataFrame(data)
+                data = pd.DataFrame(data.values.T)
+                data = data.corr('kendall')
+                kendall = data.iloc[0, 1]
+                kendall_sum += kendall
+                temp_up_num = 0
+        return kendall_sum/up_num

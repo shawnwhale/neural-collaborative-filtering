@@ -1,13 +1,17 @@
 import pandas as pd
 import numpy as np
-from gmf import GMFEngine
-from mlp import MLPEngine
-from neumf import NeuMFEngine
-from data import SampleGenerator
+import time
+import gc
+from src.gmf import GMFEngine
+from src.mlp import MLPEngine
+from src.neumf import NeuMFEngine
+from src.data import SampleGenerator
+from src.ENVIRONMENT import Environment
+from src.BASE import LinUCB, LinUCB_IND, LinUCB_Cluster
 
 gmf_config = {'alias': 'gmf_factor8neg4-implict',
-              'num_epoch': 200,
-              'batch_size': 1024,
+              'num_epoch': 60,
+              'batch_size': 4096,
               # 'optimizer': 'sgd',
               # 'sgd_lr': 1e-3,
               # 'sgd_momentum': 0.9,
@@ -24,11 +28,15 @@ gmf_config = {'alias': 'gmf_factor8neg4-implict',
               'l2_regularization': 0, # 0.01
               'use_cuda': True,
               'device_id': 0,
-              'model_dir':'checkpoints/{}_Epoch{}_HR{:.4f}_NDCG{:.4f}.model'}
+              'pretrain': True,
+              'pretrain_mf': 'checkpoints/{}'.format(
+              'gmf_factor8neg4-implict_Epoch59_HR0.6407_NDCG0.3689 ILS0.6336.model'),
 
-mlp_config = {'alias': 'mlp_factor8neg4_bz256_166432168_pretrain_reg_0.0000001',
-              'num_epoch': 200,
-              'batch_size': 256,  # 1024,
+              'model_dir':'checkpoints/{}_Epoch{}_HR{:.4f}_NDCG{:.4f} ILS{:.4f}  Kendall{:.4f}.model'}
+
+mlp_config = {'alias': 'mlp_factor8neg4_bz256_166432168_pretrain_reg_060000001',
+              'num_epoch': 60,
+              'batch_size':4096,
               'optimizer': 'adam',
               'adam_lr': 1e-3,
               'num_users': 6040,
@@ -38,14 +46,14 @@ mlp_config = {'alias': 'mlp_factor8neg4_bz256_166432168_pretrain_reg_0.0000001',
               'layers': [16,64,32,16,8],  # layers[0] is the concat of latent user vector & latent item vector
               'l2_regularization': 0.0000001,  # MLP model is sensitive to hyper params
               'use_cuda': True,
-              'device_id': 7,
+              'device_id': 0,
               'pretrain': True,
-              'pretrain_mf': 'checkpoints/{}'.format('gmf_factor8neg4_Epoch100_HR0.6391_NDCG0.2852.model'),
-              'model_dir':'checkpoints/{}_Epoch{}_HR{:.4f}_NDCG{:.4f}.model'}
+              'pretrain_mf': 'checkpoints/{}'.format('gmf_factor8neg4-implict_Epoch59_HR0.6407_NDCG0.3689 ILS0.6336.model'),
+              'model_dir':'checkpoints/{}_Epoch{}_HR{:.4f}_NDCG{:.4f} ILS{:.4f} Kendall{:.4f}.model'}
 
 neumf_config = {'alias': 'pretrain_neumf_factor8neg4',
-                'num_epoch': 200,
-                'batch_size': 1024,
+                'num_epoch': 100,
+                'batch_size': 2048,
                 'optimizer': 'adam',
                 'adam_lr': 1e-3,
                 'num_users': 6040,
@@ -53,43 +61,84 @@ neumf_config = {'alias': 'pretrain_neumf_factor8neg4',
                 'latent_dim_mf': 8,
                 'latent_dim_mlp': 8,
                 'num_negative': 4,
-                'layers': [16,32,16,8],  # layers[0] is the concat of latent user vector & latent item vector
+                'layers': [16, 64, 32, 16, 8],  # layers[0] is the concat of latent user vector & latent item vector
+                # 'layers': [16,32,16,8],  # layers[0] is the concat of latent user vector & latent item vector
                 'l2_regularization': 0.01,
                 'use_cuda': True,
-                'device_id': 7,
+                'device_id': 0,
                 'pretrain': True,
-                'pretrain_mf': 'checkpoints/{}'.format('gmf_factor8neg4_Epoch100_HR0.6391_NDCG0.2852.model'),
-                'pretrain_mlp': 'checkpoints/{}'.format('mlp_factor8neg4_Epoch100_HR0.5606_NDCG0.2463.model'),
-                'model_dir':'checkpoints/{}_Epoch{}_HR{:.4f}_NDCG{:.4f}.model'
+                'pretrain_mf': 'checkpoints/{}'.format('gmf_factor8neg4-implict_Epoch59_HR0.6407_NDCG0.3689 ILS0.6336.model'),
+                'pretrain_mlp': 'checkpoints/{}'.format('mlp_factor8neg4_bz256_166432168_pretrain_reg_060000001_Epoch59_HR0.6541_NDCG0.3798 ILS0.6334.model'),
+                'model_dir':'checkpoints/{}_Epoch{}_HR{:.4f}_NDCG{:.4f} ILS{:.4f} Kendall{:.4f}.model'
                 }
 
-# Load Data
-ml1m_dir = 'data/ml-1m/ratings.dat'
-ml1m_rating = pd.read_csv(ml1m_dir, sep='::', header=None, names=['uid', 'mid', 'rating', 'timestamp'],  engine='python')
-# Reindex
-user_id = ml1m_rating[['uid']].drop_duplicates().reindex()
-user_id['userId'] = np.arange(len(user_id))
-ml1m_rating = pd.merge(ml1m_rating, user_id, on=['uid'], how='left')
-item_id = ml1m_rating[['mid']].drop_duplicates()
-item_id['itemId'] = np.arange(len(item_id))
-ml1m_rating = pd.merge(ml1m_rating, item_id, on=['mid'], how='left')
-ml1m_rating = ml1m_rating[['userId', 'itemId', 'rating', 'timestamp']]
-print('Range of userId is [{}, {}]'.format(ml1m_rating.userId.min(), ml1m_rating.userId.max()))
-print('Range of itemId is [{}, {}]'.format(ml1m_rating.itemId.min(), ml1m_rating.itemId.max()))
-# DataLoader for training
-sample_generator = SampleGenerator(ratings=ml1m_rating)
-evaluate_data = sample_generator.evaluate_data
-# Specify the exact model
-config = gmf_config
-engine = GMFEngine(config)
-# config = mlp_config
-# engine = MLPEngine(config)
-# config = neumf_config
-# engine = NeuMFEngine(config)
-for epoch in range(config['num_epoch']):
-    print('Epoch {} starts !'.format(epoch))
-    print('-' * 80)
-    train_loader = sample_generator.instance_a_train_loader(config['num_negative'], config['batch_size'])
-    engine.train_an_epoch(train_loader, epoch_id=epoch)
-    hit_ratio, ndcg = engine.evaluate(evaluate_data, epoch_id=epoch)
-    engine.save(config['alias'], epoch, hit_ratio, ndcg)
+#
+# # Load Data
+# ml1m_dir = 'data/ml-1m/ratings.dat'
+# ml1m_rating = pd.read_csv(ml1m_dir, sep='::', header=None, names=['uid', 'mid', 'rating', 'timestamp'],  engine='python')
+# # Reindex
+# user_id = ml1m_rating[['uid']].drop_duplicates().reindex()
+# user_id['userId'] = np.arange(len(user_id))
+# ml1m_rating = pd.merge(ml1m_rating, user_id, on=['uid'], how='left')
+# item_id = ml1m_rating[['mid']].drop_duplicates()
+# item_id['itemId'] = np.arange(len(item_id))
+# ml1m_rating = pd.merge(ml1m_rating, item_id, on=['mid'], how='left')
+# ml1m_rating = ml1m_rating[['userId', 'itemId', 'rating', 'timestamp']]
+# print('Range of userId is [{}, {}]'.format(ml1m_rating.userId.min(), ml1m_rating.userId.max()))
+# print('Range of itemId is [{}, {}]'.format(ml1m_rating.itemId.min(), ml1m_rating.itemId.max()))
+#
+#
+#
+# # DataLoader for training
+# sample_generator = SampleGenerator(ratings=ml1m_rating)
+# evaluate_data = sample_generator.evaluate_data
+# # Specify the exact model
+# config = gmf_config
+# engine = GMFEngine(config)
+# # config = mlp_config
+# # engine = MLPEngine(config)
+# # config = neumf_config
+# # engine = NeuMFEngine(config)
+#
+# f=open("{}HRandNDCG-{}.txt".format(int(time.time()),config.get('alias')),"w")
+#
+# for epoch in range(config['num_epoch']):
+#     print('Epoch {} starts !'.format(epoch))
+#     print('-' * 80)
+#     train_loader = sample_generator.instance_a_train_loader(config['num_negative'], config['batch_size'])
+#     engine.train_an_epoch(train_loader, epoch_id=epoch)
+#     hit_ratio, ndcg, ils, kendall= engine.evaluate(evaluate_data, epoch_id=epoch)
+#     engine.save(config['alias'], epoch, hit_ratio, ndcg, ils, kendall)
+#
+#     f.write("hit_ratio:ndcg:ils:kendall:{}:{}:{}:{}\n".format(hit_ratio, ndcg, ils, kendall))
+#     gc.collect()
+# f.close()
+
+if __name__ == '__main__':
+    # Load Data
+    ml1m_dir = 'data/ml-1m/ratings.dat'
+    ml1m_rating = pd.read_csv(ml1m_dir, sep='::', header=None, names=['uid', 'mid', 'rating', 'timestamp'],
+                              engine='python')
+    # Reindex
+    user_id = ml1m_rating[['uid']].drop_duplicates().reindex()
+    user_id['userId'] = np.arange(len(user_id))
+    ml1m_rating = pd.merge(ml1m_rating, user_id, on=['uid'], how='left')
+    item_id = ml1m_rating[['mid']].drop_duplicates()
+    item_id['itemId'] = np.arange(len(item_id))
+    ml1m_rating = pd.merge(ml1m_rating, item_id, on=['mid'], how='left')
+    ml1m_rating = ml1m_rating[['userId', 'itemId', 'rating', 'timestamp']]
+    print('Range of userId is [{}, {}]'.format(ml1m_rating.userId.min(), ml1m_rating.userId.max()))
+    print('Range of itemId is [{}, {}]'.format(ml1m_rating.itemId.min(), ml1m_rating.itemId.max()))
+
+    # DataLoader for training
+    sample_generator = SampleGenerator(ratings=ml1m_rating)
+    evaluate_data = sample_generator.evaluate_data
+    theta = np.load("./user_em.npy")
+
+    envir = Environment(L=3706, d=8, m=10, num_users=6040, theta=theta)
+
+    ind = LinUCB_IND(nu = 6040, d = 8, T = 2 ** 10000 - 1)
+    start_time = time.time()
+    ind.run(envir)
+    run_time = time.time() - start_time
+    np.savez('ind_UCB')

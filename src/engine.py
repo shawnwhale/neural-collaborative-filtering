@@ -1,9 +1,8 @@
 import torch
 from torch.autograd import Variable
 from tensorboardX import SummaryWriter
-
-from utils import save_checkpoint, use_optimizer
-from metrics import MetronAtK
+from src.utils import save_checkpoint, use_optimizer
+from src.metrics import MetronAtK
 
 
 class Engine(object):
@@ -12,9 +11,12 @@ class Engine(object):
     Note: Subclass should implement self.model !
     """
 
+    def get_item_vector(self):
+        pass
+
     def __init__(self, config):
         self.config = config  # model configuration
-        self._metron = MetronAtK(top_k=10)
+        self._metron = MetronAtK(top_k=20)
         self._writer = SummaryWriter(log_dir='runs/{}'.format(config['alias']))  # tensorboard writer
         self._writer.add_text('config', str(config), 0)
         self.opt = use_optimizer(self.model, config)
@@ -75,12 +77,14 @@ class Engine(object):
                                  negative_items.data.view(-1).tolist(),
                                  negative_scores.data.view(-1).tolist()]
         hit_ratio, ndcg = self._metron.cal_hit_ratio(), self._metron.cal_ndcg()
+        ils=self._metron.cal_ils()
+        kendall = self._metron.cal_kendall()
         self._writer.add_scalar('performance/HR', hit_ratio, epoch_id)
         self._writer.add_scalar('performance/NDCG', ndcg, epoch_id)
-        print('[Evluating Epoch {}] HR = {:.4f}, NDCG = {:.4f}'.format(epoch_id, hit_ratio, ndcg))
-        return hit_ratio, ndcg
+        print('[Evluating Epoch {}] HR = {:.4f}, NDCG = {:.4f}, ILS = {:.4f}, KENDALL = {:.4f}'.format(epoch_id, hit_ratio, ndcg ,ils , kendall))
+        return hit_ratio, ndcg,ils ,kendall
 
-    def save(self, alias, epoch_id, hit_ratio, ndcg):
+    def save(self, alias, epoch_id, hit_ratio, ndcg,ils,kendall):
         assert hasattr(self, 'model'), 'Please specify the exact model !'
-        model_dir = self.config['model_dir'].format(alias, epoch_id, hit_ratio, ndcg)
+        model_dir = self.config['model_dir'].format(alias, epoch_id, hit_ratio, ndcg,ils,kendall)
         save_checkpoint(self.model, model_dir)

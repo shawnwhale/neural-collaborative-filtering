@@ -3,6 +3,7 @@ import random
 import pandas as pd
 from copy import deepcopy
 from torch.utils.data import DataLoader, Dataset
+import numpy as np
 
 random.seed(0)
 
@@ -51,8 +52,8 @@ class SampleGenerator(object):
     def _normalize(self, ratings):
         """normalize into [0, 1] from [0, max_rating], explicit feedback"""
         ratings = deepcopy(ratings)
-        max_rating = ratings.rating.max()
-        ratings['rating'] = ratings.rating * 1.0 / max_rating
+        # max_rating = ratings.rating.max()
+        # ratings['rating'] = ratings.rating * 1.0 / max_rating
         return ratings
     
     def _binarize(self, ratings):
@@ -100,6 +101,7 @@ class SampleGenerator(object):
         """create evaluate data"""
         test_ratings = pd.merge(self.test_ratings, self.negatives[['userId', 'negative_samples']], on='userId')
         test_users, test_items, negative_users, negative_items = [], [], [], []
+
         for row in test_ratings.itertuples():
             test_users.append(int(row.userId))
             test_items.append(int(row.itemId))
@@ -108,3 +110,26 @@ class SampleGenerator(object):
                 negative_items.append(int(row.negative_samples[i]))
         return [torch.LongTensor(test_users), torch.LongTensor(test_items), torch.LongTensor(negative_users),
                 torch.LongTensor(negative_items)]
+
+    def kendall_data(self):
+        """此处预处理user的类型倾向，用以之后计算肯德尔系数"""
+        kendall_rating = self.train_ratings.copy()
+        dim_np =  np.load('./item_dim.npy')
+        user = -1
+        user_arr = np.zeros(shape=(1,18))
+        user_dim = np.zeros(shape=(6040,18))
+        for j, temp in kendall_rating.iterrows():
+            if user == -1:
+                user = int(temp[0])
+                user_arr = np.zeros(shape=(1, 18))
+            if int(temp[0]) != user :
+                user_dim[user] = user_arr
+                user_arr = np.zeros(shape=(1, 18))
+                user = int(temp[0])
+            item_idx = int(temp[1])
+            arr = dim_np[item_idx]
+            user_arr =user_arr + arr
+        user_dim[user] = user_arr
+        print(user_dim)
+        np.save("./user_dim.npy",user_dim)
+
