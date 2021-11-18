@@ -1,21 +1,23 @@
 import numpy as np
-from src.UCButlis import isInvertible
 import random
+
 
 """bandits算法用的"""
 class Thompson:
     def __init__(self):
-        self.para_u = np.zeros(shape=(1, 18))
-        self.para_k = np.zeros(shape=(1, 18))
+        self.para_u = np.zeros(shape=(6040, 18))
+        self.para_k = np.zeros(shape=(6040, 18))
 
-    def select(self):
-        choice = np.argmax(np.random.normal(self.para_u, 1/(self.para_k+1)))
-        print(choice)
+    def select(self,u):
+        choice = np.argmax(np.random.normal(self.para_u[u,:], 1/(self.para_k[u,:]+1)))
         return choice
 
-    def update(self, c , r):
-        self.para_u[0,c] =  (self.para_u[0,c]* self.para_k[0,c] + r)/ (self.para_k[0,c]+2)
-        self.para_k[0,c] = self.para_k[0,c]+1
+    def update(self,u, c ,y, r):
+        if y == 1:
+            self.para_u[u,c] =  (self.para_u[u,c]* self.para_k[u,c] + r)/ (self.para_k[u,c]+2)
+        else:
+            self.para_u[u, c] = (self.para_u[u, c] * self.para_k[u, c] - 0.1) / (self.para_k[u, c] + 2)
+        self.para_k[u,c] = self.para_k[u,c]+1
         return
 
 class Base:
@@ -32,7 +34,9 @@ class Base:
         return np.sqrt(self.d * np.log(1 + N / self.d) + 4 * np.log(t) + np.log(2)) + 1
 
     def _select_item_ucb(self, S, Sinv, theta, items, N, t):
-        return np.argmax(np.dot(items, theta) + self._beta(N, t) * (np.matmul(items, Sinv) * items).sum(axis = 1))
+        result = np.dot(items, theta) + self._beta(N, t) * (np.matmul(items, Sinv) * items).sum(axis = 1)
+
+        return np.argmax(result)
 
     def recommend(self, i, items, t):
         # items is of type np.array (L, d)
@@ -51,69 +55,27 @@ class Base:
         return
 
     def run(self, envir):
-        for t in range(self.T):
-            if t % 5000 == 0:
-                print(t // 5000, end = ' ')
-            # self.I = envir.generate_users()
-            # for i in self.I:
-            choice = self.thompson.select()
-            items = envir.items_em        #每个user有不同的item池
-            kk = self.recommend(i=i, items=items, t=t)
-            x = items[kk]
-            y, r, br = envir.feedback(i=i, k=kk)
-            self.store_info(i=i, x=x, y=y, t=t, r=r, br=br)
+        return
 
-           # self.update(t)
-
-        print()
-
-class LinUCB(Base):
-    def __init__(self, d, T):
-        super(LinUCB, self).__init__(d, T)
-        self.S = np.eye(d)
-        self.b = np.zeros(d)
-        self.Sinv = np.eye(d)
-        self.theta = np.zeros(d)
-
-    def recommend(self, i, items, t):
-        return self._select_item_ucb(self.S, self.Sinv, self.theta, items, t, t)
-
-    def store_info(self, i, x, y, t, r, br):
-        self.rewards[t] += r
-        self.best_rewards[t] += br
-        # x是user_features
-        self.S += np.outer(x, x)
-        self.b += y * x
-
-        self.Sinv, self.theta = self._update_inverse(self.S, self.b, self.Sinv, x, t)
-
-class LinUCB_Cluster(Base):
-    def __init__(self, indexes, m, d, T):
-        super(LinUCB_Cluster, self).__init__(d, T)
-        self.indexes = indexes
-
-        self.S = {i:np.eye(d) for i in range(m)}
-        self.b = {i:np.zeros(d) for i in range(m)}
-        self.Sinv = {i:np.eye(d) for i in range(m)}
-        self.theta = {i:np.zeros(d) for i in range(m)}
-
-        self.N = np.zeros(m)
-
-    def recommend(self, i, items, t):
-        j = self.indexes[i]
-        return self._select_item_ucb(self.S[j], self.Sinv[j], self.theta[j], items, self.N[j], t)
-
-    def store_info(self, i, x, y, t, r, br):
-        self.rewards[t] += r
-        self.best_rewards[t] += br
-
-        j = self.indexes[i]
-        self.S[j] += np.outer(x, x)
-        self.b[j] += y * x
-        self.N[j] += 1
-
-        self.Sinv[j], self.theta[j] = self._update_inverse(self.S[j], self.b[j], self.Sinv[j], x, self.N[j])
-        
+# class LinUCB(Base):
+#     def __init__(self, d, T):
+#         super(LinUCB, self).__init__(d, T)
+#         self.S = np.eye(d)
+#         self.b = np.zeros(d)
+#         self.Sinv = np.eye(d)
+#         self.theta = np.zeros(d)
+#
+#     def recommend(self, i, items, t):
+#         return self._select_item_ucb(self.S, self.Sinv, self.theta, items, t, t)
+#
+#     def store_info(self, i, x, y, t, r, br):
+#         self.rewards[t] += r
+#         self.best_rewards[t] += br
+#         # x是user_features
+#         self.S += np.outer(x, x)
+#         self.b += y * x
+#
+#         self.Sinv, self.theta = self._update_inverse(self.S, self.b, self.Sinv, x, t)
 
 class LinUCB_IND(Base):
     # each user is an independent LinUCB
@@ -123,21 +85,80 @@ class LinUCB_IND(Base):
         self.b = {i:np.zeros(d) for i in range(nu)}
         self.Sinv = {i:np.eye(d) for i in range(nu)}
         self.theta = {i:np.zeros(d) for i in range(nu)}
-
+        self.item_train = {i: np.zeros(d) for i in range(nu)}
         self.N = np.zeros(nu)
+
+    def result_print(self, envir,i,k):
+        items = envir.items_em
+        t=1000
+        for num in range(k):
+            kk = self.recommend(i=i, items=items, t=t)
+            x = items[kk]
+            print(np.dot(x, self.theta[i]))
+            print(envir.train_rating[i, kk])
 
     def recommend(self, i, items, t):
         return self._select_item_ucb(self.S[i], self.Sinv[i], self.theta[i], items, self.N[i], t)
 
-    def store_info(self, i, x, y, t, r, br):
-        self.rewards[t] += r
-        self.best_rewards[t] += br
+    def store_info(self, i, x, y, t, r):
+        if y == -2 and r == -2:
+            pass
+        else:
+            self.rewards[t] += r
 
-        self.S[i] += np.outer(x, x)
-        self.b[i] += y * x
-        self.N[i] += 1
 
-        self.Sinv[i], self.theta[i] = self._update_inverse(self.S[i], self.b[i], self.Sinv[i], x, self.N[i])
+            self.S[i] += np.outer(x, x)
+            self.b[i] += y * x
+            self.N[i] += 1
+
+            self.Sinv[i], self.theta[i] = self._update_inverse(self.S[i], self.b[i], self.Sinv[i], x, self.N[i])
+
+    def run(self, envir):
+        dim_np =  np.load('./item_dim.npy')
+        item_embedding_stan = envir.items_em
+        for t in range(1,self.T):
+            if t % 5000 == 0:
+                print(t // 5000, end = ' ')
+            # self.I = envir.generate_users()
+            # for i in self.I:
+            i = 0
+            items = envir.items_em
+            if t == 1:
+                # 都摇一遍
+                for item_seq in range(3706):
+                    x = items[item_seq]
+                    y, r = envir.feedback(i=i, k=item_seq)
+                    self.store_info(i=i, x=x, y=y, t=t, r=r)
+            choice = self.thompson.select(i)
+            candidate = dim_np[:, choice]
+            candidate = np.nonzero(candidate)[0]
+            index = []
+            for j in candidate:
+                index.append(j)
+            index = set(index)
+            # 每个user有不同的item池
+            key = str(i) + ":" + str(choice)
+            if key in envir.can_train:
+                items = envir.can_train.get(key)
+            else:
+                nega_sam = set(envir.negatives.ix[i,'negative_samples'])
+                for j in nega_sam:
+                    index.discard(j)
+                this_items_em = np.zeros(shape=(3706, 8))
+                for j in index:
+                    this_items_em[j, :] = item_embedding_stan[j, :]
+                envir.can_train[key] = this_items_em
+                items = this_items_em
+
+            kk = self.recommend(i=i, items=items, t=t)
+            x = items[kk]
+            y, r = envir.feedback(i=i, k=kk)
+            self.store_info(i=i, x=x, y=y, t=t, r=r)
+            self.thompson.update(i,choice,y,r)
+           # self.update(t)
+
+        self.result_print(envir,i,10)
+
 
 
 if __name__ == '__main__':

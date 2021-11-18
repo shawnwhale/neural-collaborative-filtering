@@ -7,7 +7,7 @@ from src.mlp import MLPEngine
 from src.neumf import NeuMFEngine
 from src.data import SampleGenerator
 from src.ENVIRONMENT import Environment
-from src.BASE import LinUCB, LinUCB_IND, LinUCB_Cluster
+
 
 gmf_config = {'alias': 'gmf_factor8neg4-implict',
               'num_epoch': 60,
@@ -117,8 +117,7 @@ neumf_config = {'alias': 'pretrain_neumf_factor8neg4',
 if __name__ == '__main__':
     # Load Data
     ml1m_dir = 'data/ml-1m/ratings.dat'
-    ml1m_rating = pd.read_csv(ml1m_dir, sep='::', header=None, names=['uid', 'mid', 'rating', 'timestamp'],
-                              engine='python')
+    ml1m_rating = pd.read_csv(ml1m_dir, sep='::', header=None, names=['uid', 'mid', 'rating', 'timestamp'],  engine='python')
     # Reindex
     user_id = ml1m_rating[['uid']].drop_duplicates().reindex()
     user_id['userId'] = np.arange(len(user_id))
@@ -130,15 +129,29 @@ if __name__ == '__main__':
     print('Range of userId is [{}, {}]'.format(ml1m_rating.userId.min(), ml1m_rating.userId.max()))
     print('Range of itemId is [{}, {}]'.format(ml1m_rating.itemId.min(), ml1m_rating.itemId.max()))
 
+
+
     # DataLoader for training
     sample_generator = SampleGenerator(ratings=ml1m_rating)
     evaluate_data = sample_generator.evaluate_data
-    theta = np.load("./user_em.npy")
+    # Specify the exact model
+    # config = gmf_config
+    # engine = GMFEngine(config)
+    config = mlp_config
+    engine = MLPEngine(config)
+    # config = neumf_config
+    # engine = NeuMFEngine(config)
 
-    envir = Environment(L=3706, d=8, m=10, num_users=6040, theta=theta)
+    f=open("{}HRandNDCG-{}.txt".format(int(time.time()),config.get('alias')),"w")
 
-    ind = LinUCB_IND(nu = 6040, d = 8, T = 2 ** 10000 - 1)
-    start_time = time.time()
-    ind.run(envir)
-    run_time = time.time() - start_time
-    np.savez('ind_UCB')
+    for epoch in range(config['num_epoch']):
+        print('Epoch {} starts !'.format(epoch))
+        print('-' * 80)
+        train_loader = sample_generator.instance_a_train_loader(config['num_negative'], config['batch_size'])
+        engine.train_an_epoch(train_loader, epoch_id=epoch)
+        hit_ratio, ndcg, ils, kendall= engine.evaluate(evaluate_data, epoch_id=epoch)
+        engine.save(config['alias'], epoch, hit_ratio, ndcg, ils, kendall)
+
+        f.write("hit_ratio:ndcg:ils:kendall:{}:{}:{}:{}\n".format(hit_ratio, ndcg, ils, kendall))
+        gc.collect()
+    f.close()

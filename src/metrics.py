@@ -49,6 +49,7 @@ class MetronAtK(object):
         full, top_k = self._subjects, self._top_k
         top_k = full[full['rank']<=top_k]
         test_in_top_k =top_k[top_k['test_item'] == top_k['item']]  # golden items hit in the top_K items
+
         return len(test_in_top_k) * 1.0 / full['user'].nunique()
 
     def cal_ndcg(self):
@@ -108,7 +109,7 @@ class MetronAtK(object):
         user_itemsS = top_k.groupby('user')
         kendall_sum = 0
         up_num = 0 #符合要求的用户数
-        temp_up_num = 0
+     #   temp_up_num = 0
         for user_items in user_itemsS:
             items_seq = user_items[1]['item']
             user_id = int(user_items[0])
@@ -117,15 +118,15 @@ class MetronAtK(object):
             for vec in items_vec:
                 items_vec_sum += vec
             temp = kendall_np[user_id, :]
-            for t in temp:
-                temp_up_num  =temp_up_num + int(t)
-            if temp_up_num > 200:
-                up_num = up_num +1
-                data = np.vstack((items_vec_sum, temp))
-                data = pd.DataFrame(data)
-                data = pd.DataFrame(data.values.T)
-                data = data.corr('kendall')
-                kendall = data.iloc[0, 1]
-                kendall_sum += kendall
-                temp_up_num = 0
+            # for t in temp:
+            #     temp_up_num  =temp_up_num + int(t)
+    #        if temp_up_num > 200:
+            up_num = up_num +1
+            data = np.vstack((items_vec_sum, temp))
+            data = pd.DataFrame(data)
+            data = pd.DataFrame(data.values.T)
+            data = data.corr('kendall')
+            kendall = data.iloc[0, 1]
+            kendall_sum += kendall
+      #      temp_up_num = 0
         return kendall_sum/up_num

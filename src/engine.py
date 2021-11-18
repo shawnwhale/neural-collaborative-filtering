@@ -16,7 +16,7 @@ class Engine(object):
 
     def __init__(self, config):
         self.config = config  # model configuration
-        self._metron = MetronAtK(top_k=20)
+        self._metron = MetronAtK(top_k=30)
         self._writer = SummaryWriter(log_dir='runs/{}'.format(config['alias']))  # tensorboard writer
         self._writer.add_text('config', str(config), 0)
         self.opt = use_optimizer(self.model, config)

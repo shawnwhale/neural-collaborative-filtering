@@ -6,24 +6,30 @@ def get_best_reward(items, theta):
 
 class Environment:
 	# p: frequency vector of users
-	def __init__(self, L, d, m, num_users, p, theta):
+	def __init__(self, L, d, m, num_users, theta,negatives,items_em,train):
 		self.L = L
 		self.d = d
-		self.p = p # probability distribution over users
-
-		self.items_em = np.load("./item_em.npy")
+		# self.p = p # probability distribution over users
+		self.negatives = negatives
+		self.items_em = items_em
 		self.theta = theta
+		self.can_train = {}    #储存user:组为key的items的向量
+		self.train_rating = train
 
 	def get_items(self):
 		self.items = generate_items(num_items = self.L, d = self.d)
 		return self.items
 
 	def feedback(self, i, k):
-		x = self.items[k, :]
-		r = np.dot(self.theta[i], x)
-		y = np.random.binomial(1, r)   #一次伯努利试验，p=r
-		br = get_best_reward(self.items, self.theta[i])
-		return y, r, br
+		x = self.items_em[k, :]
+		thetaone = self.theta[i, :]
+		r = np.dot(thetaone, x)
+		y = self.train_rating[i, k]
+		if y == -1:
+			return -2, -2
+		# y = np.random.binomial(1, r)   #一次伯努利试验，p=r
+#		br = get_best_reward(self.items, self.theta[i])
+		return y, r
 
 	def generate_users(self):
 		X = np.random.multinomial(1, self.p)

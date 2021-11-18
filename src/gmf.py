@@ -37,20 +37,20 @@ class GMF(torch.nn.Module):
         self.embedding_user.weight.data = gmf_model.embedding_user.weight.data
         self.embedding_item.weight.data = gmf_model.embedding_item.weight.data
 
-        user_id = np.ndarray(shape=(1,6040))
-        item_id = np.ndarray(shape=(1, 3706))
-        for i in range(0,6039):
-            user_id[0,i] = i
-        for j in range(0,3705):
-            item_id[0,j] = j
-        user_indices =  torch.LongTensor(user_id).cuda()
-        item_indices =  torch.LongTensor(item_id).cuda()
-        user_embedding = self.embedding_user(user_indices).cpu()
-        item_embedding = self.embedding_item(item_indices).cpu()
-        user_embedding = user_embedding.detach().numpy()
-        item_embedding = item_embedding.detach().numpy()
-        np.save("./user_em", user_embedding)
-        np.save("./item_em",item_embedding)
+        # user_id = np.ndarray(shape=(1,6040))
+        # item_id = np.ndarray(shape=(1, 3706))
+        # for i in range(0,6039):
+        #     user_id[0,i] = i
+        # for j in range(0,3705):
+        #     item_id[0,j] = j
+        # user_indices =  torch.LongTensor(user_id).cuda()
+        # item_indices =  torch.LongTensor(item_id).cuda()
+        # user_embedding = self.embedding_user(user_indices).cpu()
+        # item_embedding = self.embedding_item(item_indices).cpu()
+        # user_embedding = user_embedding.detach().numpy()
+        # item_embedding = item_embedding.detach().numpy()
+        # np.save("./user_em", user_embedding)
+        # np.save("./item_em",item_embedding)
 
 
 class GMFEngine(Engine):
