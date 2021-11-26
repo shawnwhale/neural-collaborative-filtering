@@ -16,7 +16,7 @@ class Engine(object):
 
     def __init__(self, config):
         self.config = config  # model configuration
-        self._metron = MetronAtK(top_k=30)
+        self._metron = MetronAtK(top_k=20)
         self._writer = SummaryWriter(log_dir='runs/{}'.format(config['alias']))  # tensorboard writer
         self._writer.add_text('config', str(config), 0)
         self.opt = use_optimizer(self.model, config)
@@ -79,12 +79,13 @@ class Engine(object):
         hit_ratio, ndcg = self._metron.cal_hit_ratio(), self._metron.cal_ndcg()
         ils=self._metron.cal_ils()
         kendall = self._metron.cal_kendall()
-        self._writer.add_scalar('performance/HR', hit_ratio, epoch_id)
-        self._writer.add_scalar('performance/NDCG', ndcg, epoch_id)
-        print('[Evluating Epoch {}] HR = {:.4f}, NDCG = {:.4f}, ILS = {:.4f}, KENDALL = {:.4f}'.format(epoch_id, hit_ratio, ndcg ,ils , kendall))
-        return hit_ratio, ndcg,ils ,kendall
+        entropy = self._metron.cal_entropy()
+        # self._writer.add_scalar('performance/HR', hit_ratio, epoch_id)
+        # self._writer.add_scalar('performance/NDCG', ndcg, epoch_id)
+        print('[Evluating Epoch {}] HR = {:.4f}, NDCG = {:.4f}, ILS = {:.4f}, KENDALL = {:.4f}, entropy = {:.4f}'.format(epoch_id, hit_ratio, ndcg ,ils , kendall,entropy))
+        return hit_ratio, ndcg,ils ,kendall,entropy
 
-    def save(self, alias, epoch_id, hit_ratio, ndcg,ils,kendall):
+    def save(self, alias, epoch_id, hit_ratio, ndcg,ils,kendall,entropy):
         assert hasattr(self, 'model'), 'Please specify the exact model !'
-        model_dir = self.config['model_dir'].format(alias, epoch_id, hit_ratio, ndcg,ils,kendall)
+        model_dir = self.config['model_dir'].format(alias, epoch_id, hit_ratio, ndcg,ils,kendall,entropy)
         save_checkpoint(self.model, model_dir)

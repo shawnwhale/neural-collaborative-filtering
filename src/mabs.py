@@ -4,17 +4,19 @@ import gc
 import torch
 from sklearn.metrics.pairwise import cosine_similarity
 from src.metrics import MetronAtK
+import traceback
 
 USER_BEGIN = 0
-USER_NUM = 1208
-VEC_DIM = 8
-test_np = np.load("./UCBtest.npy")
+USER_NUM = 101
+VEC_DIM = 16
+items_popu_tran_dic = np.load("./items_popu_tran_dic.npy",allow_pickle=True).tolist()
 train_np = np.load("./UCBtrain.npy")
 dim_np = np.load('./item_dim.npy')
 """bandits算法用的"""
 class Thompson:
     def __init__(self):
         self.para_u = np.zeros(shape=(6040, 18))
+        # self.para_u = np.full(shape=(6040, 18),fill_value = 0.1)
         self.para_k = np.zeros(shape=(6040, 18))
 
     def select(self,u , repeat = 0 ):
@@ -32,9 +34,9 @@ class Thompson:
                 choices.append(choice)
             return choices
 
-    def update(self,u, c ,y):
-        if y == 1:
-            self.para_u[u,c] =  (self.para_u[u,c]* self.para_k[u,c] + y)/ (self.para_k[u,c]+2)
+    def update(self,u, c ,y,item_earnings = 1):
+        # if y == 1:
+        self.para_u[u,c] =  (self.para_u[u,c]* self.para_k[u,c] + y)/ (self.para_k[u,c]+2.0)
 
         self.para_k[u,c] = self.para_k[u,c]+1
         return
@@ -54,7 +56,7 @@ class Explorer:
         self.nega_item = {}
         self.posi_item = {}
         self.item_embedding = item_embedding
-        self.user_embedding = user_embedding
+        self.user_embedding = []  #没使用
         self.negatives = negatives
         self.train_ratings = train_ratings
         self.test_ratings = test_ratings
@@ -129,32 +131,8 @@ class Explorer:
         return  group_num
 
     def calculate(self,user,posi_vec,k=10):
-        item_embedding = self.item_embedding
         choice_pool = self.thompson.select(user, repeat=k)
         result,flag = self.test_recommend(user,choice_pool,posi_vec, k=k)
-        # maxarg = -1
-        # maxres = -1
-        # seq = -1
-        # maxseq = -1
-        # for temp in result:
-        #     seq = seq + 1
-        #     no_tensor = []
-        #     no_tensor.append(temp)
-        #     result_ten = torch.LongTensor(no_tensor).cuda()
-        #     no_tensor = []
-        #     no_tensor.append(user)
-        #     user_seq = torch.LongTensor(no_tensor).cuda()
-        #     pre_scores = self.engine.model(user_seq, result_ten)
-        #     items_vec = np.zeros(shape=(2, VEC_DIM))
-        #     items_vec[0, :] = posi_vec
-        #     items_vec[1, :] = item_embedding[temp, :]
-        #     similarity_posi = cosine_similarity(items_vec)
-        #     tempres = pre_scores - similarity_posi[0, 1]
-        #     if tempres > maxres:
-        #         maxres = tempres
-        #         maxarg = temp
-        #         maxseq = seq
-        # reward = self.rewards(user, maxarg,rating_np= test_np)      #命中率！
         return  flag
 
 
@@ -224,9 +202,9 @@ class Explorer:
 
         self.engine.model.eval()
      #   result.append(ans_item)
-        result, result_set,result_score = self.deal_choice(user, choice_pool, result, result_set, result_score, item_group,posi_vec)
+        result, result_set,result_score = self.deal_choice(user, choice_pool, result, result_set, result_score, item_group, posi_vec)
         secu = 0
-        while len(result) <  k:
+        while len(result) <  2 * k:
             secu = secu + 1
             if secu > 5:
                 # 防止卡死在某一个group
@@ -235,7 +213,7 @@ class Explorer:
                 next_pool.append(num_pool)
             else:
                 next_pool = self.thompson.select(user, repeat=1)
-            result, result_set,result_score = self.deal_choice(user, next_pool, result, result_set, result_score, item_group,posi_vec)
+            result, result_set,result_score = self.deal_choice(user, next_pool, result, result_set, result_score, item_group, posi_vec)
         temp_np = np.array(result_score)
         sorted_scores = np.argsort(- temp_np)
         ans_table = []
@@ -274,12 +252,12 @@ class Explorer:
 
         return ans_table, flag
 
-    def deal_choice(self,user,choice_pool,result,result_set,result_score, item_group,posi_vec):
-        # item_embedding = self.item_embedding
+    def deal_choice(self,user,choice_pool,result,result_set,result_score, item_group, posi_vec):
+        item_embedding = self.item_embedding
         group_num = self.get_echoes(choice_pool) # 记录摇到了多少个
         choice_pool = set(choice_pool)
         for group in choice_pool:
-            num = group_num[group]
+            num = group_num[group] * 2
 
             if group not in item_group:
                 continue
@@ -290,17 +268,23 @@ class Explorer:
             pre_scores = self.engine.model(user_seq, result_ten)
             temp_np = pre_scores.cpu().detach().numpy()
 
-            # similarity_part = []
-            # for temp in one_result:
-            #     items_vec = np.zeros(shape=(2, VEC_DIM))
-            #     items_vec[0, :] = posi_vec
-            #     items_vec[1, :] = item_embedding[temp, :]
-            #     similarity_posi = cosine_similarity(items_vec)
-            #     similarity_part.append(similarity_posi[0,1])
-            # similarity_part = np.array(similarity_part)
+            m = 0  # 序号
+            for temp in one_result:
+                arfa = items_popu_tran_dic[temp]  # 阿尔法是流行度调整参数
+                temp_np[m, :] = temp_np[m, :] * arfa
+                m=m+1
 
-            temp_np = np.transpose(temp_np)
-           # temp_np = np.transpose(temp_np) - similarity_part
+            similarity_part = []
+            for temp in one_result:
+                items_vec = np.zeros(shape=(2, VEC_DIM))
+                items_vec[0, :] = posi_vec
+                items_vec[1, :] = item_embedding[temp, :]
+                similarity_posi = cosine_similarity(items_vec)
+                similarity_part.append(similarity_posi[0,1])
+            similarity_part = np.array(similarity_part)
+
+            # temp_np = np.transpose(temp_np)
+            temp_np = np.transpose(temp_np) -  0.1 * similarity_part
             sorted_scores = np.argsort(- temp_np)
             range_jud = sorted_scores.shape[1] - num    #大于0，说明可选内容多。反之，权重大。
             if range_jud >= 0:
@@ -328,14 +312,18 @@ class Explorer:
     def generate_recommend(self, user, choice_pool,posi_vec,nega_set):
         result = []
         result_scores = []
+        result_earnings = []
         result_set = set()
         positive_temp = -1
         item_embedding = self.item_embedding
         self.engine.model.eval()
         group_num = self.get_echoes(choice_pool)  # 记录摇到了多少个
         choice_pool = set(choice_pool)
+        result_choice_pool = []
         for group in choice_pool:
+
             num = group_num[group]
+
             key = str(user) + ":" + str(group)
             if positive_temp == -1 and len(self.user_train_positive_pool[key]) > 0 :
                 positive_temp = random.sample(self.user_train_positive_pool[key], 1)
@@ -354,11 +342,13 @@ class Explorer:
                 items_vec[1, :] = item_embedding[positive_item, :]
                 similarity_posi = cosine_similarity(items_vec)
                 pre_scores = pre_scores.cpu().detach().numpy()
-                positive_scores = pre_scores[0,0] - similarity_posi[0, 1]
+                arfa = items_popu_tran_dic[positive_item]    #阿尔法是流行度调整参数
+                positive_scores = pre_scores[0,0] * arfa - similarity_posi[0, 1]
                 result.append(positive_item)
                 result_set.add(positive_item)
+                result_earnings.append(pre_scores[0,0])
                 result_scores.append(positive_scores)
-
+                result_choice_pool.append(group)
             else:
                 if len(self.user_choice_pool[key]) > 100:
                     one_result = random.sample(self.user_choice_pool[key], 100)
@@ -369,70 +359,61 @@ class Explorer:
                     user_seq = np.full(len(one_result), user, dtype=int)
                     user_seq = torch.LongTensor(user_seq).cuda()
                     pre_scores = self.engine.model(user_seq, result_ten)
+                    pre_np = pre_scores.cpu().detach().numpy()
 
                     similarity_part = []
-
+                    m = 0   #序号
                     for temp in one_result:
+                        arfa = items_popu_tran_dic[temp]  # 阿尔法是流行度调整参数
+                        pre_np[m, :] = pre_np[m, :] * arfa
                         items_vec = np.zeros(shape=(2, VEC_DIM))
                         items_vec[0, :] = posi_vec
                         items_vec[1, :] = item_embedding[temp, :]
                         similarity_posi = cosine_similarity(items_vec)
                         similarity_part.append(similarity_posi[0,1])
-
+                        m = m + 1
                     similarity_part = np.array(similarity_part)
-                    pre_np = pre_scores.cpu().detach().numpy()
+
                     scores = pre_np.T - similarity_part
 
-                    # sorted_scores = np.argsort(- scores)
-                    # range_jud = sorted_scores.shape[1] - num  # 大于0，说明可选内容多。反之，权重大。
-                    # if range_jud >= 0:
-                    #     range_num = num
-                    # else:
-                    #     range_num = sorted_scores.shape[1]
-                    # Ie = 0
-                    # su = 0
-                    # while su < range_num:
-                    #     if Ie >= sorted_scores.shape[1]:
-                    #         break
-                    #     seq_scores = int(sorted_scores[0, Ie])
-                    #     res_item = int(one_result[seq_scores])
-                    #     if res_item in result_set:
-                    #         Ie = Ie + 1
-                    #     elif res_item in nega_set:
-                    #         Ie = Ie + 1
-                    #     else:
-                    #         result.append(res_item)
-                    #         result_scores.append(scores[0, seq_scores])
-                    #         result_set.add(res_item)
-                    #         Ie = Ie + 1
-                    #         su = su + 1
-
-                    arg_scores = np.argsort(- scores)
-                    flag = True
-                    for seq in range(arg_scores.shape[1]):
-                        temp_item = int(one_result[seq])
-                        if temp_item in nega_set:
-                            continue
-                        else:
-                            result_scores.append(scores[0, seq])
-                            result.append(temp_item)
-                            flag = False
+                    sorted_scores = np.argsort(- scores)
+                    range_jud = sorted_scores.shape[1] - num  # 大于0，说明可选内容多。反之，权重大。
+                    if range_jud >= 0:
+                        range_num = num
+                    else:
+                        range_num = sorted_scores.shape[1]
+                    Ie = 0
+                    su = 0
+                    while su < range_num:
+                        if Ie >= sorted_scores.shape[1]:
                             break
-                    if flag:
-                        result_scores.append(scores[0, arg_scores.shape[1]-1])
-                        result.append(int(one_result[arg_scores.shape[1]-1]))
-        return  result, result_scores   #返回item编号，及计算得分
+                        seq_scores = int(sorted_scores[0, Ie])
+                        res_item = int(one_result[seq_scores])
+                        if res_item in result_set:
+                            Ie = Ie + 1
+                        elif res_item in nega_set:
+                            Ie = Ie + 1
+                        else:
+                            result.append(res_item)
+                            result_earnings.append(pre_np.T[0, seq_scores])
+                            result_scores.append(scores[0, seq_scores])
+                            result_choice_pool.append(group)
+                            result_set.add(res_item)
+                            Ie = Ie + 1
+                            su = su + 1
+        return  result, result_scores,result_earnings,result_choice_pool   #返回item编号，及计算得分
 
-    def run(self,T):
+    def run(self,T,k=10):
         succ = 0
 
         item_embedding = self.item_embedding
         self.engine.model.eval()
-        self.user_choice_pool,self.user_train_positive_pool = self.add_choice_pool(500,600)
-        create_num = 600
-        for user in range(USER_BEGIN + 1, USER_NUM):
+        self.user_choice_pool,self.user_train_positive_pool = self.add_choice_pool(USER_BEGIN,USER_BEGIN + 100)
+        create_num = USER_BEGIN + 100
+        for user in range(USER_BEGIN , USER_NUM):
             succ_part = 0
             posi_vec = np.zeros(shape=(1, VEC_DIM))
+            posi_num = 0
             nega_set = set()
 
             if user >= create_num:
@@ -443,22 +424,28 @@ class Explorer:
                     choice_pool=[]
                     #摇repeat次进行一次学习
                     choice_pool = self.thompson.select(user,repeat= 10)
-                    result,result_scores= self.generate_recommend(user,choice_pool,posi_vec,nega_set)
+                    result,result_scores,result_earnings,result_choice_pool = self.generate_recommend(user, choice_pool, posi_vec, nega_set)
                     item_temp = np.array(result_scores)
-                    resarg = np.argmax(- item_temp)   #ValueError: attempt to get argmax of an empty sequence
+                    resarg = np.argmax(item_temp)   #ValueError: attempt to get argmax of an empty sequence
                     item_num = result[resarg]
+                    item_earnings = result_earnings[resarg]
                     reward = self.rewards(user, item_num)
-                    group_num = choice_pool[resarg]
+                    group_num = result_choice_pool[resarg]
                     new_vec = item_embedding[item_num, :]
                     if reward == 1:
                         succ_part = succ_part+1
-                        posi_vec = (posi_vec + new_vec) / 2
+                        posi_vec = (posi_vec + posi_num)/2
+                        posi_num = posi_num + 1
                     else:
-                        nega_set.add(item_num)
-                    self.thompson.update(user, group_num ,reward )
+                        # nega_set.add(item_num)
+
+                        posi_vec = (posi_vec * posi_num + new_vec) / (posi_num + 1.0)
+                        posi_num = posi_num + 1
+                    self.thompson.update(user, group_num ,reward,item_earnings)
                 except:
+                    traceback.print_exc()
                     continue
-            reward = self.calculate(user,posi_vec,k=10)
+            reward = self.calculate(user,posi_vec,k=k)
      #       result, reward=self.gmf_recommend(user)
             succ = succ +reward
             print("完成user计算：" + str(user))
@@ -466,11 +453,13 @@ class Explorer:
             print(hit)
             gc.collect()
             if user > 0 and user % 100 == 0:
-                hit_ratio, ndcg, ils, kendall =self.evaluate(self.evaluate_data,k=10)
-                print(str(hit_ratio) +"!"+ str(ndcg )+"!"+ str(ils) +"!"+str(kendall))
+                hit_ratio, ndcg, ils, kendall, entropy=self.evaluate(self.evaluate_data,k=k)
+                print(str(hit_ratio) +"!"+ str(ndcg )+"!"+ str(ils) +"!"+str(kendall)+ "!" + str(entropy))
+        f = open("newK=20.txt", "w")
+        hit_ratio, ndcg, ils, kendall, entropy= self.evaluate(self.evaluate_data,k=k)
+        f.write("hit_ratio:ndcg:ils:kendall:entropy:{}:{}:{}:{}:{}\n".format(hit_ratio, ndcg, ils, kendall, entropy))
+        f.close()
 
-        hit_ratio, ndcg, ils, kendall = self.evaluate(self.evaluate_data,k=10)
-        print(str(hit_ratio) + "!" + str(ndcg) + "!" + str(ils) + "!" + str(kendall))
 
     def evaluate(self,evaluate_data,k=10):
 
@@ -490,7 +479,8 @@ class Explorer:
                                  negative_items,
                                  negative_scores]
         kendall = metron.cal_kendall()
+        entropy= metron.cal_entropy(len(test_users))
         hit_ratio, ndcg = metron.cal_hit_ratio(), metron.cal_ndcg()
         ils = metron.cal_ils()
 
-        return hit_ratio, ndcg, ils, kendall
+        return hit_ratio, ndcg, ils, kendall,entropy

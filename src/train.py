@@ -9,7 +9,7 @@ from src.data import SampleGenerator
 from src.ENVIRONMENT import Environment
 
 
-gmf_config = {'alias': 'gmf_factor8neg4-implict',
+gmf_config = {'alias': 'gmf_factor16neg4k20-implict',
               'num_epoch': 60,
               'batch_size': 4096,
               # 'optimizer': 'sgd',
@@ -23,14 +23,14 @@ gmf_config = {'alias': 'gmf_factor8neg4-implict',
               'adam_lr': 1e-3,
               'num_users': 6040,
               'num_items': 3706,
-              'latent_dim': 8,
+              'latent_dim': 16,
               'num_negative': 4,
               'l2_regularization': 0, # 0.01
               'use_cuda': True,
               'device_id': 0,
               'pretrain': True,
               'pretrain_mf': 'checkpoints/{}'.format(
-              'gmf_factor8neg4-implict_Epoch59_HR0.6407_NDCG0.3689 ILS0.6336.model'),
+              'gmf_factor16neg4k10-implict_Epoch59_HR0.6712_NDCG0.3968 ILS0.6346  Kendall0.5500.model'),
 
               'model_dir':'checkpoints/{}_Epoch{}_HR{:.4f}_NDCG{:.4f} ILS{:.4f}  Kendall{:.4f}.model'}
 
@@ -41,14 +41,16 @@ mlp_config = {'alias': 'mlp_factor8neg4_bz256_166432168_pretrain_reg_060000001',
               'adam_lr': 1e-3,
               'num_users': 6040,
               'num_items': 3706,
-              'latent_dim': 8,
+              'latent_dim': 16,
               'num_negative': 4,
-              'layers': [16,64,32,16,8],  # layers[0] is the concat of latent user vector & latent item vector
+              'layers': [32,128,64,32,16],
+              # 'layers': [16,64,32,16,8], # layers[0] is the concat of latent user vector & latent item vector
               'l2_regularization': 0.0000001,  # MLP model is sensitive to hyper params
               'use_cuda': True,
               'device_id': 0,
               'pretrain': True,
-              'pretrain_mf': 'checkpoints/{}'.format('gmf_factor8neg4-implict_Epoch59_HR0.6407_NDCG0.3689 ILS0.6336.model'),
+              'pretrain_mf': 'checkpoints/{}'.format(
+              'mlp_factor8neg4_bz256_166432168_pretrain_reg_060000001_Epoch16_HR0.6806_NDCG0.4058 ILS0.6376 Kendall0.5478.model'),
               'model_dir':'checkpoints/{}_Epoch{}_HR{:.4f}_NDCG{:.4f} ILS{:.4f} Kendall{:.4f}.model'}
 
 neumf_config = {'alias': 'pretrain_neumf_factor8neg4',
@@ -149,9 +151,9 @@ if __name__ == '__main__':
         print('-' * 80)
         train_loader = sample_generator.instance_a_train_loader(config['num_negative'], config['batch_size'])
         engine.train_an_epoch(train_loader, epoch_id=epoch)
-        hit_ratio, ndcg, ils, kendall= engine.evaluate(evaluate_data, epoch_id=epoch)
-        engine.save(config['alias'], epoch, hit_ratio, ndcg, ils, kendall)
+        hit_ratio, ndcg, ils, kendall,entropy= engine.evaluate(evaluate_data, epoch_id=epoch)
+        engine.save(config['alias'], epoch, hit_ratio, ndcg, ils, kendall,entropy)
 
-        f.write("hit_ratio:ndcg:ils:kendall:{}:{}:{}:{}\n".format(hit_ratio, ndcg, ils, kendall))
+        f.write("hit_ratio:ndcg:ils:kendall:entropy:{}:{}:{}:{}:{}\n".format(hit_ratio, ndcg, ils, kendall,entropy))
         gc.collect()
     f.close()

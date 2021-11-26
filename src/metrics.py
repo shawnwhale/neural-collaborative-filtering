@@ -1,9 +1,10 @@
 import math
 import pandas as pd
-from sklearn.preprocessing import Normalizer
 from sklearn.metrics.pairwise import cosine_similarity
 import torch
 import numpy as np
+import time
+
 class MetronAtK(object):
     def __init__(self, top_k):
         self._top_k = top_k
@@ -60,26 +61,32 @@ class MetronAtK(object):
         return test_in_top_k['ndcg'].sum() * 1.0 / full['user'].nunique()
 
 
-    # def cal_ils(self,embedding_item):
-    #     dim_np= np.load('./item_dim.npy')
-    #     num_k=self._top_k
-    #     full, top_k = self._subjects, self._top_k
-    #     top_k = full[full['rank']<=top_k]
-    #     user_itemsS = top_k.groupby('user')
-    #     ils_sum = 0
-    #     for user_items in user_itemsS:
-    #         items_seq = user_items[1]['item']
-    #         items_seq = torch.from_numpy(np.array(items_seq.tolist())).cuda(0)
-    #         items_vec = embedding_item(items_seq).cpu().detach().numpy()
-    #         normalizer = Normalizer(norm='l2')
-    #         items_vec = normalizer.fit_transform(items_vec)
-    #         similarity_matrix = cosine_similarity(items_vec)
-    #         similarity_matrix_df = pd.DataFrame(similarity_matrix)
-    #         similarity_matrix_df = (similarity_matrix_df + 1) * 0.5    #对余弦相似度归一化处理
-    #         L = np.tril(similarity_matrix_df, -1)
-    #         one_ils= 2*L.sum()/(num_k*(num_k-1))
-    #         ils_sum=ils_sum+one_ils
-    #     return ils_sum/full['user'].nunique()
+    def cal_entropy(self, user=6040):
+        #熵多样性计算
+        full, top_k = self._subjects, self._top_k
+        top_k = full[full['rank'] <= top_k]
+        item_entropy_dic = {}
+        sumrow = 0
+        for index, row in top_k.iterrows():
+            item = int(row['item'])
+            sumrow = sumrow + 1
+            if item in item_entropy_dic:
+                item_entropy_dic[item] = item_entropy_dic[item]+1
+            else:
+                item_entropy_dic[item] = 1
+
+        if user > 1200:
+            name = str(user)+str(time.time())
+            np.save("./entropy_dic"+name +".npy", item_entropy_dic)
+
+        entropy = 0
+        for i in range(3706):
+            if i in item_entropy_dic:
+                temp = item_entropy_dic[i]/sumrow
+                entropy = entropy + temp * math.log(temp)
+            else:
+                continue
+        return -entropy
 
     def cal_ils(self):
         dim_np= np.load('./item_dim.npy')
@@ -130,3 +137,19 @@ class MetronAtK(object):
             kendall_sum += kendall
       #      temp_up_num = 0
         return kendall_sum/up_num
+
+    def cal_popular(self):
+        items_popu_dic = np.load("./items_popu_dic.npy", allow_pickle=True).tolist()
+        num_k = self._top_k
+        full, top_k = self._subjects, self._top_k
+        top_k = full[full['rank'] <= top_k]
+        user_itemsS = top_k.groupby('user')
+        popu_per = 0
+
+        for user_items in user_itemsS:
+            items_seq = user_items[1]['item']
+            for seq in items_seq:
+                popu = items_popu_dic[seq]
+                popu_per = popu_per +popu
+
+        return popu_per / (full['user'].nunique() * num_k)

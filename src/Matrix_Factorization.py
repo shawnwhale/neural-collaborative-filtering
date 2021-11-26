@@ -117,11 +117,12 @@ class Matrix_Factorization(object):
                                  negative_users.data.view(-1).tolist(),
                                  negative_items.data.view(-1).tolist(),
                                  negative_scores.data.view(-1).tolist()]
+        entropy = metron.cal_entropy()
         kendall = metron.cal_kendall()
         hit_ratio, ndcg = metron.cal_hit_ratio(), metron.cal_ndcg()
         ils = metron.cal_ils()
 
-        return hit_ratio, ndcg, ils, kendall
+        return hit_ratio, ndcg, ils, kendall,entropy
 
 if __name__ == '__main__':
 
