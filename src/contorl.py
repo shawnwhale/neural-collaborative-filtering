@@ -104,8 +104,8 @@ if __name__ == '__main__':
     # items_popu_dic = np.load("./items_popu_dic.npy",allow_pickle=True).tolist()
     # items_popu_tran_dic = {}
     # for item in items_popu_dic:
-    #     tran = math.log10(20 + (270.0 / items_popu_dic[item]))
-    #     tran = tran / 1.3
+    #     tran = math.log(20 + (270.0 / items_popu_dic[item]))
+    #     tran = tran / math.log(20)
     #     items_popu_tran_dic[item] = tran
     #     print(tran)
     # np.save("./items_popu_tran_dic.npy", items_popu_tran_dic)
@@ -174,12 +174,12 @@ if __name__ == '__main__':
     engine = MLPEngine(config)
 
     train_loader = sample_generator.instance_a_train_loader(config['num_negative'], config['batch_size'])
-    for epoch in range(1):
+    for epoch in range(2):
         engine.train_an_epoch(train_loader, epoch_id= epoch)
     engine.saveitem_em()
     item_embedding = np.load("./item_em.npy")
     item_embedding = item_embedding.reshape(3706, VEC_DIM)
 
-    explorer = Explorer(item_embedding,user_embedding, negatives, train_ratings,test_ratings, engine)
+    explorer = Explorer(item_embedding,user_embedding, negatives, train_ratings,test_ratings, engine,sample_generator.ratings)
 
-    explorer.run(50, 20)
+    explorer.run(100, 10)

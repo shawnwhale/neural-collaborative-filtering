@@ -75,9 +75,9 @@ class MetronAtK(object):
             else:
                 item_entropy_dic[item] = 1
 
-        if user > 1200:
-            name = str(user)+str(time.time())
-            np.save("./entropy_dic"+name +".npy", item_entropy_dic)
+        # if user > 1200:
+        #     name = str(user)+str(time.time())
+        #     np.save("./entropy_dic"+name +".npy", item_entropy_dic)
 
         entropy = 0
         for i in range(3706):
@@ -104,7 +104,8 @@ class MetronAtK(object):
             L = np.tril(similarity_matrix_df, -1)
             one_ils= 2*L.sum()/(num_k*(num_k-1))
             ils_sum=ils_sum+one_ils
-        return ils_sum/full['user'].nunique()
+        ils = ils_sum / full['user'].nunique()
+        return (1.0-ils) * 2.0   #return ild
 
     def cal_kendall(self):
         kendall_np = np.load('./user_dim.npy')

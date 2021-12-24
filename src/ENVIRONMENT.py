@@ -1,5 +1,5 @@
 import numpy as np
-from src.UCButlis import generate_items
+from src.TSutil import generate_items
 
 def get_best_reward(items, theta):
 	return np.max(np.dot(items, theta))
