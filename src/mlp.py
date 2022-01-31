@@ -46,19 +46,19 @@ class MLP(torch.nn.Module):
     def load_pretrain_weights(self):
         """Loading weights from trained GMF model"""
         config = self.config
-        # gmf_model = GMF(config)
-        # if config['use_cuda'] is True:
-        #     gmf_model.cuda()
-        # resume_checkpoint(gmf_model, model_dir=config['pretrain_mf'], device_id=config['device_id'])
-        # self.embedding_user.weight.data = gmf_model.embedding_user.weight.data
-        # self.embedding_item.weight.data = gmf_model.embedding_item.weight.data
-
-        mlp_model = MLP(config)
+        gmf_model = GMF(config)
         if config['use_cuda'] is True:
-            mlp_model.cuda()
-        resume_checkpoint(mlp_model, model_dir=config['pretrain_mf'], device_id=config['device_id'])
-        self.embedding_user.weight.data = mlp_model.embedding_user.weight.data
-        self.embedding_item.weight.data = mlp_model.embedding_item.weight.data
+            gmf_model.cuda()
+        resume_checkpoint(gmf_model, model_dir=config['pretrain_mf'], device_id=config['device_id'])
+        self.embedding_user.weight.data = gmf_model.embedding_user.weight.data
+        self.embedding_item.weight.data = gmf_model.embedding_item.weight.data
+
+        # mlp_model = MLP(config)
+        # if config['use_cuda'] is True:
+        #     mlp_model.cuda()
+        # resume_checkpoint(mlp_model, model_dir=config['pretrain_mf'], device_id=config['device_id'])
+        # self.embedding_user.weight.data = mlp_model.embedding_user.weight.data
+        # self.embedding_item.weight.data = mlp_model.embedding_item.weight.data
 
 class MLPEngine(Engine):
     """Engine for training & evaluating GMF model"""
@@ -80,11 +80,20 @@ class MLPEngine(Engine):
 
     def saveitem_em(self):
         #user_id = np.ndarray(shape=(1,6040))
-        item_id = np.ndarray(shape=(1, 3706))
+
+        #movie
+        # item_id = np.ndarray(shape=(1, 3706))
+        # for j in range(0, 3705):
+        #     item_id[0, j] = j
+
+        # books
+        item_id = np.ndarray(shape=(1, 9701))
+        for j in range(0, 9700):
+            item_id[0, j] = j
+
         # for i in range(0,6039):
         #     user_id[0,i] = i
-        for j in range(0,3705):
-            item_id[0,j] = j
+
         # user_indices =  torch.LongTensor(user_id).cuda()
         item_indices =  torch.LongTensor(item_id).cuda()
         # user_embedding = self.model.embedding_user(user_indices).cpu()
@@ -92,4 +101,7 @@ class MLPEngine(Engine):
         # user_embedding = user_embedding.detach().numpy()
         item_embedding = item_embedding.detach().numpy()
         # np.save("./user_em", user_embedding)
-        np.save("./item_em",item_embedding)
+
+        # np.save("./item_em",item_embedding)
+
+        np.save("./item_book_em.npy", item_embedding)

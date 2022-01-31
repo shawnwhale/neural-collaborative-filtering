@@ -89,7 +89,9 @@ class MetronAtK(object):
         return -entropy
 
     def cal_ils(self):
-        dim_np= np.load('./item_dim.npy')
+        # dim_np= np.load('./item_dim.npy') #movielens
+        dim_np = np.load('./booksnpy/item_np_book.npy')  #goodbooks
+
         num_k=self._top_k
         full, top_k = self._subjects, self._top_k
         top_k = full[full['rank']<=top_k]
@@ -108,8 +110,13 @@ class MetronAtK(object):
         return (1.0-ils) * 2.0   #return ild
 
     def cal_kendall(self):
-        kendall_np = np.load('./user_dim.npy')
-        dim_np = np.load('./item_dim.npy')
+        #movie
+        # kendall_np = np.load('./user_dim.npy')
+        # dim_np = np.load('./item_dim.npy')
+
+        # goodbooks
+        kendall_np = np.load('./booksnpy/user_dim_np_book.npy')
+        dim_np = np.load('./booksnpy/item_np_book.npy')
 
         num_k = self._top_k
         full, top_k = self._subjects, self._top_k
@@ -122,7 +129,10 @@ class MetronAtK(object):
             items_seq = user_items[1]['item']
             user_id = int(user_items[0])
             items_vec = dim_np[items_seq, :]   #获得推荐项目的向量
-            items_vec_sum = np.zeros(shape=(1,18))
+
+            # items_vec_sum = np.zeros(shape=(1,18))  #movie
+            items_vec_sum = np.zeros(shape=(1, 26))
+
             for vec in items_vec:
                 items_vec_sum += vec
             temp = kendall_np[user_id, :]
