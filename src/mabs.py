@@ -6,9 +6,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from src.metrics import MetronAtK
 import traceback
 import src.TSutil as util
-import os
 
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 random.seed(123)
 K_P = 3
@@ -16,7 +14,7 @@ POPU_GP = 0.0
 
 USER_BEGIN = 0
 USER_NUM = 5431
-
+USER_SUM_NUM = 5431
 VEC_DIM = 16
 GROUP_NUM = 26
 
@@ -29,6 +27,7 @@ items_popu_tran_dic = np.load("./items_book_popu_tran_dic.npy",allow_pickle=True
 train_np = np.load("./UCBtrain_book.npy")
 dim_np = np.load('./booksnpy/item_np_book.npy')
 kendall_np = np.load('./booksnpy/user_dim_np_book.npy')
+load_item_id_book_map = np.load("./load_item_id_book_map.npy", allow_pickle=True).tolist() # 考虑项目编号被重置了，需要转回去
 
 """bandits算法用的"""
 class Thompson:
@@ -129,6 +128,7 @@ class Explorer:
         train_positive = np.load("./train_positive.npy", allow_pickle=True).tolist()
 
         for group in range(GROUP_NUM):
+            #注意此处，是否引入大于9701
             candidate = dim_np[:, group]
             candidate = np.nonzero(candidate)[0]
             index = []
@@ -180,46 +180,47 @@ class Explorer:
         return  group_num
 
     def calculate(self,user,posi_vec,k=10,user_popuav = 270.0):
-        choice_pool = self.thompson.select(user, repeat=k)
+        choice_num = k * K_P
+        choice_pool = self.thompson.select(user, repeat=choice_num)
         result,flag = self.test_recommend(user,choice_pool,posi_vec, k=k,user_popuav=user_popuav)
         return  flag
 
 
-    def gmf_recommend(self,user, k=10):
-        # 对比实验，gmf推荐前k个准确率
-        ans_item = -1
-        result =set()
-        test_list = list(self.negatives.ix[user, 'negative_samples'])
-        for index, line in self.test_ratings.iterrows():
-            userid = int(line['userId'])
-            itemid = int(line['itemId'])
-            if userid == user:
-                test_list.append(itemid)
-                ans_item = itemid
-                break
-
-        self.engine.model.eval()
-        one_result = np.array(list(test_list))
-
-        result_ten = torch.tensor(np.array(one_result)).cuda()
-        # result_ten = torch.LongTensor(one_result).cuda()  #在movie上可行，然而在books上不行
-
-        user_seq = np.full(len(one_result), user, dtype=int)
-
-        user_seq = torch.tensor(np.array(user_seq)).cuda()
-        # user_seq = torch.LongTensor(user_seq).cuda()
-
-        pre_scores = self.engine.model(user_seq, result_ten)
-        temp_np = pre_scores.cpu().detach().numpy()
-        sorted_scores = np.argsort(- np.transpose(temp_np))
-        for i in range(10):
-            item_num = one_result[sorted_scores[0,i]]
-            result.add(item_num)
-        if ans_item in result:
-            flag = 1
-        else:
-            flag = 0
-        return result, flag
+    # def gmf_recommend(self,user, k=10):
+    #     # 对比实验，gmf推荐前k个准确率
+    #     ans_item = -1
+    #     result =set()
+    #     test_list = list(self.negatives.ix[user, 'negative_samples'])
+    #     for index, line in self.test_ratings.iterrows():
+    #         userid = int(line['userId'])
+    #         itemid = int(line['itemId'])
+    #         if userid == user:
+    #             test_list.append(itemid)
+    #             ans_item = itemid
+    #             break
+    #
+    #     self.engine.model.eval()
+    #     one_result = np.array(list(test_list))
+    #
+    #     result_ten = torch.tensor(np.array(one_result)).cuda()
+    #     # result_ten = torch.LongTensor(one_result).cuda()  #在movie上可行，然而在books上不行
+    #
+    #     user_seq = np.full(len(one_result), user, dtype=int)
+    #
+    #     user_seq = torch.tensor(np.array(user_seq)).cuda()
+    #     # user_seq = torch.LongTensor(user_seq).cuda()
+    #
+    #     pre_scores = self.engine.model(user_seq, result_ten)
+    #     temp_np = pre_scores.cpu().detach().numpy()
+    #     sorted_scores = np.argsort(- np.transpose(temp_np))
+    #     for i in range(10):
+    #         item_num = one_result[sorted_scores[0,i]]
+    #         result.add(item_num)
+    #     if ans_item in result:
+    #         flag = 1
+    #     else:
+    #         flag = 0
+    #     return result, flag
 
     def test_recommend(self, user, choice_pool,posi_vec, k=10, user_popuav= 270.0):
         result = []
@@ -235,7 +236,7 @@ class Explorer:
                 ans_item = itemid
                 break
 
-        # 分配test_set到18个group
+        # 分配test_set到18个group /26个
         item_group = {}
         for item in test_set:
             group_non = np.nonzero(dim_np[item])
@@ -264,7 +265,7 @@ class Explorer:
             if secu > 5:
                 # 防止卡死在某一个group
                 next_pool = []
-                num_pool = random.randint(0, 17)
+                num_pool = random.randint(0, GROUP_NUM - 1)
                 next_pool.append(num_pool)
             else:
                 next_pool = self.thompson.select(user, repeat=1)
@@ -436,6 +437,13 @@ class Explorer:
             one_result = small_pool[key]
             if len(one_result) > 0:
 
+                #test
+                # for key in one_result:
+                #     if int(key) > 9701:
+                #         print("!")
+                # lits转tensor，报错CUDA error: device-side assert triggered
+                # 推测原因：有效item9701个，但是这里出现了如9775的转tensor,small_pool混入了
+
                 result_ten = torch.tensor(np.array(one_result)).cuda()
                 # result_ten = torch.LongTensor(one_result).cuda()  #在movie上可行，然而在books上不行
 
@@ -498,7 +506,11 @@ class Explorer:
 
         item_embedding = self.item_embedding
         self.engine.model.eval()
-        self.user_choice_pool,self.user_train_positive_pool = self.add_choice_pool(USER_BEGIN,USER_BEGIN + 100)
+        if USER_BEGIN + 100 < USER_SUM_NUM:
+            add_end_ser = USER_BEGIN + 100
+        else:
+            add_end_ser = USER_SUM_NUM
+        self.user_choice_pool,self.user_train_positive_pool = self.add_choice_pool(USER_BEGIN,add_end_ser)
         create_num = USER_BEGIN + 100
         for user in range(USER_BEGIN , USER_NUM):
             succ_part = 0
@@ -506,83 +518,57 @@ class Explorer:
             posi_num = 0
             nega_set = set()
 
-            # # 自适应轮数
-            # t=0
-            # for num in kendall_np[user,:]:
-            #     t=t+num
-            # T = int(t/4)
-            # if T > 360:
-            #     T = 360
-
             if user >= create_num:
-                self.user_choice_pool, self.user_train_positive_pool = self.add_choice_pool(create_num,create_num + 100)
+                if create_num + 100 < USER_SUM_NUM:
+                    add_end_ser = create_num + 100
+                else:
+                    add_end_ser = USER_SUM_NUM
+                self.user_choice_pool, self.user_train_positive_pool = self.add_choice_pool(create_num,add_end_ser)
                 create_num = create_num + 100
 
             small_pool,user_popuav = util.init_negasample(user, self.user_choice_pool, self.user_train_positive_pool)
 
-            for turn in range(T):
-                try:
-                    choice_pool=[]
-                    #摇repeat次进行一次学习
-                    choice_pool = self.thompson.select(user,repeat= 1)
-                    result,result_scores,result_earnings,result_choice_pool = self.generate_recommend(user, choice_pool, posi_vec, nega_set,small_pool,turn,user_popuav)
-                    item_temp = np.array(result_scores)
-                    if item_temp.size < 1:
-                        continue
-                    resarg = np.argmax(item_temp)   #ValueError: attempt to get argmax of an empty sequence
-                    item_num = result[resarg]
-                    item_earnings = result_earnings[resarg]
-                    reward = self.rewards(user, item_num)
-                    group_num = result_choice_pool[resarg]
-                    new_vec = item_embedding[item_num, :]
-                    if reward > 0:
-                        succ_part = succ_part + 1
-                        posi_vec = (posi_vec + posi_num) / 2
-                        posi_num = posi_num + 1
-                    else:
-                        # nega_set.add(item_num)
-
-                        posi_vec = (posi_vec * posi_num + new_vec) / (posi_num + 1.0)
-                        posi_num = posi_num + 1
-                    self.thompson.update(user, group_num, reward, item_earnings=1)
-
-                    # #模拟topN
-                    # ressort = np.argsort(-item_temp)
-                    # flag = False
-                    # for num in ressort:
-                    #     item_num = result[num]
-                    #     reward = self.rewards(user, item_num)
-                    #     if reward == 1:
-                    #         new_vec = item_embedding[item_num, :]
-                    #         succ_part = succ_part + 1
-                    #         posi_vec = (posi_vec + posi_num) / 2
-                    #         posi_num = posi_num + 1
-                    #         flag = True
-                    #         group_num = result_choice_pool[num]
-                    #         self.thompson.update(user, group_num, reward, item_earnings=1)
-                    #         break
-                    # if flag == False:
-                    #     group_num = result_choice_pool[ressort[0]]
-                    #     self.thompson.update(user, group_num, 0, item_earnings=1)
-                    #     posi_vec = (posi_vec * posi_num + new_vec) / (posi_num + 1.0)
-                    #     posi_num = posi_num + 1
-
-                except:
-                    traceback.print_exc()
-                    continue
+            # for turn in range(T):
+            #     try:
+            #         choice_pool=[]
+            #         #摇repeat次进行一次学习
+            #         choice_pool = self.thompson.select(user,repeat= 1)
+            #         result,result_scores,result_earnings,result_choice_pool = self.generate_recommend(user, choice_pool, posi_vec, nega_set,small_pool,turn,user_popuav)
+            #         item_temp = np.array(result_scores)
+            #         if item_temp.size < 1:
+            #             continue
+            #         resarg = np.argmax(item_temp)   #ValueError: attempt to get argmax of an empty sequence
+            #         item_num = result[resarg]
+            #         item_earnings = result_earnings[resarg]
+            #         reward = self.rewards(user, item_num)
+            #         group_num = result_choice_pool[resarg]
+            #         new_vec = item_embedding[item_num, :]
+            #         if reward > 0:
+            #             succ_part = succ_part + 1
+            #             posi_vec = (posi_vec + posi_num) / 2
+            #             posi_num = posi_num + 1
+            #         else:
+            #             # nega_set.add(item_num)
+            #
+            #             posi_vec = (posi_vec * posi_num + new_vec) / (posi_num + 1.0)
+            #             posi_num = posi_num + 1
+            #         self.thompson.update(user, group_num, reward, item_earnings=1)
+            #     except:
+            #         traceback.print_exc()
+            #         continue
 
 
-            # #直接赋值
-            # group_dic ={}
-            # i=0
-            # sum_ts = 0
-            # for num in kendall_np[user, :]:
-            #     sum_ts=sum_ts+num
-            #     group_dic[i] = num
-            #     i=i+1
-            # for j in range(18):
-            #     num_f = group_dic[j] / float(sum_ts)
-            #     self.thompson.set(user,j,num_f)
+            #直接赋值
+            group_dic ={}
+            i=0
+            sum_ts = 0
+            for num in kendall_np[user, :]:
+                sum_ts=sum_ts+num
+                group_dic[i] = num
+                i=i+1
+            for j in range(GROUP_NUM):
+                num_f = group_dic[j] / float(sum_ts)
+                self.thompson.set(user,j,num_f)
 
 
             reward = self.calculate(user,posi_vec,k=k,user_popuav=user_popuav)
@@ -592,7 +578,7 @@ class Explorer:
             hit = succ / (float(user) - float(USER_BEGIN) +1.0 )
             print(hit)
 
-            if user > 0 and user % 100 == 0:
+            if user > 0 and user % 500 == 0:
                 hit_ratio, ndcg, ils, kendall,popular=self.evaluate(self.evaluate_data,k=k)
                 print(str(hit_ratio) +"!"+ str(ndcg )+"!"+ str(ils) +"!"+str(kendall)+"!"+str(popular))
         f = open("newK=20.txt", "w")
@@ -619,11 +605,12 @@ class Explorer:
                                  negative_users,
                                  negative_items,
                                  negative_scores]
-        kendall = metron.cal_kendall()
+        kendall = metron.cal_kendall(recovery = False)
         # entropy= metron.cal_entropy(len(test_users))
         hit_ratio, ndcg = metron.cal_hit_ratio(), metron.cal_ndcg()
-        ils = metron.cal_ils()
-        popular = metron.cal_popular()
+        ils = metron.cal_ils(recovery = False)
+        # popular = metron.cal_popular()
+        popular = 0
         return hit_ratio, ndcg, ils, kendall,popular
 
 

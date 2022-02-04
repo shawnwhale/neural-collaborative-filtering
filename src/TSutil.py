@@ -14,13 +14,17 @@ maxpopu = 3428
 perpopu = 29.4552
 stdpopu = 55.5683
 midpopu = 242 #中位数
+
 """bandits算法用的"""
 def init_negasample(user,user_choice_pool,user_train_positive_pool):
     result_pool = {}
     popu_sum = 0.0
     popu_av = 0.0
     popu_ind = 0
-    items_popu_dic = np.load("./items_popu_dic.npy",allow_pickle=True).tolist()
+    items_popu_dic = np.load("./items_book_popu_dic.npy", allow_pickle=True).tolist()
+
+    # items_popu_dic = np.load("./items_popu_dic.npy",allow_pickle=True).tolist()
+
     for group in range(GROUP_NUM):
 
         key = str(user) + ":" + str(group)
@@ -52,6 +56,8 @@ def init_negasample(user,user_choice_pool,user_train_positive_pool):
 
 
 if __name__ == '__main__':
+
+    # dim_np = np.load('./booksnpy/item_np_book.npy')
 
     # books
 
@@ -89,7 +95,7 @@ if __name__ == '__main__':
     for item in items_popu_dic:
         stdv = abs(items_popu_dic[item] - perpopu) / stdpopu + 1
         tran = math.log(1 + 1 / stdv)
-        tran = 1 + tran * 0.5
+        tran = 1 + tran * 0.0
         # tran = 1.0 / items_popu_dic[item]   #Ziwei_WSDM_2021
         items_book_popu_tran_dic[item] = tran
         print(tran)

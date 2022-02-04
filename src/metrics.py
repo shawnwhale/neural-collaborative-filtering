@@ -5,6 +5,9 @@ import torch
 import numpy as np
 import time
 
+
+load_item_id_book_map = np.load("./load_item_id_book_map.npy", allow_pickle=True).tolist() # 考虑项目编号被重置了，需要转回去
+
 class MetronAtK(object):
     def __init__(self, top_k):
         self._top_k = top_k
@@ -88,7 +91,7 @@ class MetronAtK(object):
                 continue
         return -entropy
 
-    def cal_ils(self):
+    def cal_ils(self, recovery = False):
         # dim_np= np.load('./item_dim.npy') #movielens
         dim_np = np.load('./booksnpy/item_np_book.npy')  #goodbooks
 
@@ -99,6 +102,10 @@ class MetronAtK(object):
         ils_sum = 0
         for user_items in user_itemsS:
             items_seq = user_items[1]['item']
+
+            if recovery == True:
+                items_seq = self.tran_item_recovery(items_seq)
+
             items_vec = dim_np[items_seq, :]
             similarity_matrix = cosine_similarity(items_vec)
             similarity_matrix_df = pd.DataFrame(similarity_matrix)
@@ -109,7 +116,7 @@ class MetronAtK(object):
         ils = ils_sum / full['user'].nunique()
         return (1.0-ils) * 2.0   #return ild
 
-    def cal_kendall(self):
+    def cal_kendall(self, recovery = False):
         #movie
         # kendall_np = np.load('./user_dim.npy')
         # dim_np = np.load('./item_dim.npy')
@@ -127,6 +134,10 @@ class MetronAtK(object):
      #   temp_up_num = 0
         for user_items in user_itemsS:
             items_seq = user_items[1]['item']
+
+            if recovery == True:
+                items_seq = self.tran_item_recovery(items_seq)
+
             user_id = int(user_items[0])
             items_vec = dim_np[items_seq, :]   #获得推荐项目的向量
 
@@ -164,3 +175,11 @@ class MetronAtK(object):
                 popu_per = popu_per +popu
 
         return popu_per / (full['user'].nunique() * num_k)
+
+    def tran_item_recovery(self,items_seq):
+        # 使用形如load_item_id_book_map的dic，把编号转回原位
+        ans = []
+        for item in items_seq:
+            reitem = load_item_id_book_map[item]
+            ans.append(reitem)
+        return ans

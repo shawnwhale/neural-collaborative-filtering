@@ -30,7 +30,7 @@ gmf_config = {'alias': 'gmf_factor16_from120_books-implict',
               'device_id': 0,
               'pretrain': True,
               'pretrain_mf': 'checkpoints/{}'.format(
-              'gmf_factor16_from120_books-implict_Epoch4_HR0.5462_NDCG0.3018 ILS0.0000  Kendall0.0000.model'),
+              'gmf_factor16_from120_books-implict_Epoch5_HR0.7154_NDCG0.3455 ILS0.8034  Kendall0.4067.model'),
 
               'model_dir':'checkpoints/{}_Epoch{}_HR{:.4f}_NDCG{:.4f} ILS{:.4f}  Kendall{:.4f}.model'}
 
@@ -126,6 +126,17 @@ def load_books():
     book_rating = pd.merge(book_rating, user_id, on=['uid'], how='left')
     item_id = book_rating[['mid']].drop_duplicates()
     item_id['itemId'] = np.arange(len(item_id))
+
+    # 记录itemid转化关系
+    # load_item_id_book_df = item_id.reset_index(drop=True)
+    # load_item_id_book_map= {}
+    # load_item_id_book_remap = {}
+    # for index, row in load_item_id_book_df.iterrows():
+    #     load_item_id_book_map[row[1]] = row[0]  # 记录为dic，去重后：去重前
+    #     load_item_id_book_remap[row[0]] = row[1]  # 记录为dic，去重前：去重后
+    # np.save("./load_item_id_book_map.npy",load_item_id_book_map)
+    # np.save("./load_item_id_book_remap.npy", load_item_id_book_remap)
+
     book_rating = pd.merge(book_rating, item_id, on=['mid'], how='left')
     book_rating = book_rating[['userId', 'itemId', 'rating', 'timestamp']]
     print('Range of userId is [{}, {}]'.format(book_rating.userId.min(), book_rating.userId.max()))
@@ -166,10 +177,10 @@ if __name__ == '__main__':
     # Specify the exact model
     # config = gmf_config
     # engine = GMFEngine(config)
-    # config = mlp_config
-    # engine = MLPEngine(config)
-    config = neumf_config
-    engine = NeuMFEngine(config)
+    config = mlp_config
+    engine = MLPEngine(config)
+    # config = neumf_config
+    # engine = NeuMFEngine(config)
 
     f=open("{}HRandNDCG-{}.txt".format(int(time.time()),config.get('alias')),"w")
 

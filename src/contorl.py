@@ -11,9 +11,7 @@ from src.mlp import MLPEngine
 from src.neumf import NeuMFEngine
 from src.data import SampleGenerator
 import random
-import os
 
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 
 # maxpopu = 3428
@@ -74,7 +72,7 @@ def load_books():
     user_id = book_rating[['uid']].drop_duplicates().reindex()
     user_id['userId'] = np.arange(len(user_id))
     book_rating = pd.merge(book_rating, user_id, on=['uid'], how='left')
-    item_id = book_rating[['mid']].drop_duplicates()
+    item_id = book_rating[['mid']].drop_duplicates()  # 书籍编号有10000，不重复的有9701个
     item_id['itemId'] = np.arange(len(item_id))
     book_rating = pd.merge(book_rating, item_id, on=['mid'], how='left')
     book_rating = book_rating[['userId', 'itemId', 'rating', 'timestamp']]
@@ -136,8 +134,8 @@ if __name__ == '__main__':
     train_ratings = sample_generator.train_ratings
     test_ratings = sample_generator.test_ratings
 
-    train = sample_generator.train_ratings
-    test = sample_generator.test_ratings
+    # train = sample_generator.train_ratings
+    # test = sample_generator.test_ratings
     #
     # train_np = np.zeros((6040, 3706))
     # test_np = np.zeros((6040, 3706))
@@ -198,9 +196,8 @@ if __name__ == '__main__':
 
     config = mlp_config
     engine = MLPEngine(config)
-
-    train_loader = sample_generator.instance_a_train_loader(config['num_negative'], config['batch_size'])
-    for epoch in range(1):
+    for epoch in range(2):
+        train_loader = sample_generator.instance_a_train_loader(config['num_negative'], config['batch_size'])
         engine.train_an_epoch(train_loader, epoch_id= epoch)
 
     engine.saveitem_em()
@@ -211,11 +208,11 @@ if __name__ == '__main__':
     item_embedding = np.load("./item_book_em.npy")
     item_embedding = item_embedding.reshape(9701, VEC_DIM)
 
-    #test
-    # result_ten = torch.tensor(np.array([5323,7861])).cuda()
+    # #test
+    # result_ten = torch.tensor(np.array([9910,7861])).cuda()
     # user_seq = torch.tensor(np.array([0,0])).cuda()
     # pre = engine.model(user_seq, result_ten)
 
     explorer = Explorer(item_embedding,user_embedding, negatives, train_ratings,test_ratings, engine,sample_generator.ratings)
 
-    explorer.run(100, 10)
+    explorer.run(50, 20)
